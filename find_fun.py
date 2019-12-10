@@ -1,6 +1,6 @@
 import tkinter as tk
 import tkinter.ttk as ttk
-import tkinter.font as tkFont
+import tkinter.font as tkfont
 from PIL import Image, ImageTk
 from tkinter import filedialog
 from os import getcwd
@@ -14,16 +14,15 @@ class Application(tk.Frame):
         super().__init__(master)
         self.master = master
         self.master.bind("<Return>", self._do_search)
+        self.master.grid_columnconfigure(0, weight=1)
+        self.master.grid_rowconfigure(0, weight=1)
 
         self.recurse = tk.BooleanVar()
         self.search_pattern = tk.StringVar()
         self.search_folder = tk.StringVar()
         self.status_text = tk.StringVar()
-
-        parent = tk.Frame(self.master, padx=10, pady=10)
-        parent.grid()
-
-        self._create_widgets(parent)
+        self.status_text.set("Copyright © 2019 Paul Sobolik")
+        self._create_widgets()
         self._set_up_icons()
 
     def _set_up_icons(self):
@@ -34,59 +33,64 @@ class Application(tk.Frame):
         self.doc_icon = set_up_icon('./icon/document.png')
         self.folder_icon = set_up_icon('./icon/folder.png')
 
-    def _create_widgets(self, parent):
-        # Look for text box
+    def _create_widgets(self):
+        frame = ttk.Frame(padding="10")
+        frame.grid(sticky=tk.NSEW)
+        frame.grid_columnconfigure(1, weight=1)
+
+        # Search pattern text box
         row = 0
-        tk.Label(parent, text="Look for").grid(row=row, column=0, sticky=tk.E)
-        self.search_pattern_entry = tk.Entry(
-            parent, textvariable=self.search_pattern)
-        self.search_pattern_entry.grid(row=row, column=1, sticky=tk.EW)
+        ttk.Label(frame, text="Look for").grid(row=row, column=0, sticky=tk.E)
+        search_pattern_entry = ttk.Entry(frame,
+                                         textvariable=self.search_pattern)
+        search_pattern_entry.grid(row=row, column=1, sticky=tk.EW)
 
         # Start button
-        self.start_button = tk.Button(parent, text="Start",
-                                      padx="10",
-                                      command=self._do_search)
+        self.start_button = ttk.Button(frame, text="Start",
+                                       command=self._do_search)
         self.start_button.grid(row=row, column=2, sticky=tk.W)
 
-        # Look in text box
+        # Search folder text box
         row += 1
-        tk.Label(parent, text="Look in").grid(row=row, column=0, sticky=tk.E)
-        self.search_folder_entry = tk.Entry(
-            parent, textvariable=self.search_folder)
-        self.search_folder_entry.grid(row=row, column=1, sticky=tk.EW)
+        ttk.Label(frame, text="Look in").grid(row=row, column=0, sticky=tk.E)
+        ttk.Entry(frame, textvariable=self.search_folder).grid(row=row,
+                                                               column=1,
+                                                               sticky=tk.EW)
 
-        # Select folder button
-        self.search_folder_button = tk.Button(parent, text="...",
-                                              command=self._get_search_folder)
-        self.search_folder_button.grid(row=row, column=2, sticky=tk.W)
+        # Select search folder button
+        ttk.Button(frame, text="...",
+                   command=self._get_search_folder).grid(row=row,
+                                                         column=2,
+                                                         sticky=tk.W)
 
         # Search subdirectories check box
         row += 1
-        tk.Label(parent, text="Search subdirectories?").grid(row=row, column=0,
+        ttk.Label(frame, text="Search subdirectories?").grid(row=row,
+                                                             column=0,
                                                              sticky=tk.E)
-        self.recurse_check = tk.Checkbutton(parent, onvalue=True,
-                                            offvalue=False,
-                                            variable=self.recurse)
-        self.recurse_check.grid(row=row, column=1, sticky=tk.W)
+        ttk.Checkbutton(frame, onvalue=True,
+                        offvalue=False,
+                        variable=self.recurse).grid(row=row, column=1,
+                                                    sticky=tk.W)
 
         # Results tree
         row += 1
-        self.master.grid_rowconfigure(row, weight=1)
-        self._set_up_tree(parent, row, 0, 3)
+        frame.grid_rowconfigure(row, weight=1)
+        self._set_up_tree(frame, row, 0, 3)
 
         # Status bar
         row += 1
         self.statusbar = tk.Label(textvariable=self.status_text)
         self.statusbar.grid(row=row, column=0, columnspan=3, sticky=tk.W)
 
-        self.search_pattern_entry.focus_set()
+        search_pattern_entry.focus_set()
 
-    def _set_up_tree(self, parent, row, column, columnspan):
+    def _set_up_tree(self, frame, row, column, column_span):
         headings = ['Name', 'Location']
 
-        container = ttk.Frame(parent)
-        container.grid(row=row, column=column, columnspan=columnspan,
-                       sticky="nsew")
+        container = ttk.Frame(frame)
+        container.grid(row=row, column=column, columnspan=column_span,
+                       sticky=tk.NSEW)
 
         self.tree = ttk.Treeview(columns=headings, padding=0)
         for col in headings:
@@ -95,7 +99,7 @@ class Application(tk.Frame):
                                   self.tree, c, 0))
         self.tree.column(headings[0], stretch=False)
         self.tree.column("#0", stretch=False,
-                         width=tkFont.Font().measure("X" * 4))
+                         width=tkfont.Font().measure("X" * 4))
 
         vsb = ttk.Scrollbar(orient="vertical",
                             command=self.tree.yview)
@@ -108,9 +112,9 @@ class Application(tk.Frame):
         container.grid_rowconfigure(0, weight=1)
 
     def _get_search_folder(self):
-        initialdir = self.search_folder or getcwd()
+        initial_dir = self.search_folder or getcwd()
         search_folder = filedialog.askdirectory(
-            initialdir=initialdir, parent=self.master,
+            initialdir=initial_dir, parent=self.master,
             mustexist=True)
         if search_folder:
             self.search_folder.set(search_folder)
@@ -137,9 +141,9 @@ class Application(tk.Frame):
         else:
             matches = len(self.tree.get_children())
             suffix = "" if matches == 1 else "es"
-            self._set_status(f"{matches:,} match{suffix}")
+            self._set_status(f'{matches:,} match{suffix}')
 
-    def _do_search(self, event=None):
+    def _do_search(self):
         self.tree.delete(*self.tree.get_children())
         search_pattern = self.search_pattern.get() or "*"
         search_folder = expanduser(self.search_folder.get()) or getcwd()
@@ -155,10 +159,10 @@ class Application(tk.Frame):
         self.master.after(100, self._process_results_queue)
 
     def _set_status(self, statustext):
-        textlen = tkFont.Font().measure(statustext)
-        maxwidth = self.master.winfo_width() - tkFont.Font().measure("XX")
+        textlen = tkfont.Font().measure(statustext)
+        maxwidth = self.master.winfo_width() - tkfont.Font().measure("XX")
         if textlen > maxwidth:
-            while tkFont.Font().measure("..." + statustext) > maxwidth:
+            while tkfont.Font().measure("..." + statustext) > maxwidth:
                 statustext = statustext[1:]
             statustext = "..." + statustext
         self.status_text.set(statustext)
@@ -167,8 +171,7 @@ class Application(tk.Frame):
 def sort_tree(tree, col, descending):
     """sort tree contents when a column header is clicked on"""
     # grab values to sort
-    data = [(tree.set(child, col), child)
-            for child in tree.get_children('')]
+    data = [(tree.set(child, col), child) for child in tree.get_children('')]
     # if the data to be sorted is numeric change to float
     # data =  change_numeric(data)
     # now sort the data in place
@@ -176,8 +179,8 @@ def sort_tree(tree, col, descending):
     for ix, item in enumerate(data):
         tree.move(item[1], '', ix)
     # switch the heading so it will sort in the opposite direction
-    tree.heading(col, command=lambda col=col: sort_tree(tree, col,
-                                                        int(not descending)))
+    tree.heading(col, command=lambda c=col: sort_tree(tree, col,
+                                                      int(not descending)))
 
 
 root = tk.Tk()
