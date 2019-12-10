@@ -120,15 +120,15 @@ class Application(tk.Frame):
             self.search_folder.set(search_folder)
 
     def _process_progress_queue(self):
-        if not self.progressqueue.empty():
-            status = self.progressqueue.get()
+        if not self.progress_queue.empty():
+            status = self.progress_queue.get()
             self._set_status(status)
 
             self.master.after(100, self._process_progress_queue)
 
     def _process_results_queue(self):
-        if not self.resultsqueue.empty():
-            files = self.resultsqueue.get()
+        if not self.results_queue.empty():
+            files = self.results_queue.get()
             # print(f"files: {len(files)}")
             for file in files:
                 image = self.folder_icon if isdir(file) \
@@ -147,25 +147,25 @@ class Application(tk.Frame):
         self.tree.delete(*self.tree.get_children())
         search_pattern = self.search_pattern.get() or "*"
         search_folder = expanduser(self.search_folder.get()) or getcwd()
-        self.resultsqueue = queue.Queue()
-        self.progressqueue = queue.Queue()
-        self.searchtask = searchtask.SearchTask(self.progressqueue,
-                                                self.resultsqueue,
-                                                search_pattern,
-                                                search_folder,
-                                                self.recurse.get())
-        self.searchtask.start()
+        self.results_queue = queue.Queue()
+        self.progress_queue = queue.Queue()
+        self.search_task = searchtask.SearchTask(self.progress_queue,
+                                                 self.results_queue,
+                                                 search_pattern,
+                                                 search_folder,
+                                                 self.recurse.get())
+        self.search_task.start()
         self.master.after(100, self._process_progress_queue)
         self.master.after(100, self._process_results_queue)
 
-    def _set_status(self, statustext):
-        textlen = tkfont.Font().measure(statustext)
-        maxwidth = self.master.winfo_width() - tkfont.Font().measure("XX")
-        if textlen > maxwidth:
-            while tkfont.Font().measure("..." + statustext) > maxwidth:
-                statustext = statustext[1:]
-            statustext = "..." + statustext
-        self.status_text.set(statustext)
+    def _set_status(self, status_text):
+        text_length = tkfont.Font().measure(status_text)
+        max_width = self.master.winfo_width() - tkfont.Font().measure("XX")
+        if text_length > max_width:
+            while tkfont.Font().measure("..." + status_text) > max_width:
+                status_text = status_text[1:]
+            status_text = "..." + status_text
+        self.status_text.set(status_text)
 
 
 def sort_tree(tree, col, descending):
