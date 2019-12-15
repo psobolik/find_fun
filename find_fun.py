@@ -25,9 +25,10 @@ class Application(tk.Frame):
     def __init__(self, master=None):
         super().__init__(master)
         self.master = master
-        self.master.bind("<Return>", self._do_search)
         self.master.grid_columnconfigure(0, weight=1)
         self.master.grid_rowconfigure(0, weight=1)
+
+        self.master.bind("<Return>", self._do_search)
 
         self.recurse = tk.BooleanVar()
         self.search_pattern = tk.StringVar(value="*")
@@ -36,7 +37,6 @@ class Application(tk.Frame):
         self.count_text = tk.StringVar()
 
         self.search_stopped = False
-
         self.search_task = None
         self.results_queue = queue.Queue()
         self.progress_queue = queue.Queue()
@@ -142,6 +142,11 @@ class Application(tk.Frame):
         search_pattern_entry.focus_set()
 
     def _set_up_tree(self, frame, row, column, column_span):
+        def set_up_context_menu(master):
+            master.context_menu = tk.Menu(master, tearoff=0)
+            master.context_menu.add_command(label="Copy Path",
+                                            command=self._copy_path)
+
         headings = ['Name', 'Location']
 
         container = ttk.Frame(frame)
@@ -149,7 +154,14 @@ class Application(tk.Frame):
                        sticky=tk.NSEW)
 
         self.tree = ttk.Treeview(columns=headings, padding=0)
+        set_up_context_menu(self.tree)
+
         self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
+        if platform.system() == "Darwin":
+            self.tree.bind("<Button-2>", self._on_tree_context_menu)
+        else:
+            self.tree.bind("<Button-3>", self._on_tree_context_menu)
+
         for col in headings:
             self.tree.heading(col, text=col.title(),
                               command=lambda c=col: sort_tree(
@@ -253,19 +265,19 @@ class Application(tk.Frame):
             status_text = "..." + status_text
         self.status_text.set(status_text)
 
+    def _get_selected_file(self):
+        sel = self.tree.selection()
+        if len(sel) == 1:
+            file_set = self.tree.set(sel)
+            return join(file_set[self.tree.heading(1)["text"]],
+                        file_set[self.tree.heading(0)["text"]])
+
     # noinspection PyUnusedLocal
     def _on_tree_select(self, event=None):
-        def selected_file():
-            sel = self.tree.selection()
-            if len(sel) == 1:
-                file_set = self.tree.set(sel)
-                return join(file_set["Location"], file_set["Name"])
-
-        file = selected_file()
+        file = self._get_selected_file()
         if file is None:
             self._set_status("")
             return
-
         s = stat(file)
         status = (
             f"{stat_u.filemode(s.st_mode)} "
@@ -277,6 +289,20 @@ class Application(tk.Frame):
             f"{basename(file) + ('/' if stat_u.S_ISDIR(s.st_mode) else '')}"
         )
         self._set_status(status)
+
+    def _on_tree_context_menu(self, event):
+        # No context menu if more than one item is selected
+        if len(self.tree.selection()) == 1:
+            try:
+                self.tree.context_menu.tk_popup(event.x_root, event.y_root, 0)
+            finally:
+                self.tree.context_menu.grab_release()
+
+    def _copy_path(self):
+        file = self._get_selected_file()
+        if file is not None:
+            self.master.clipboard_clear()
+            self.master.clipboard_append(file)
 
 
 def sort_tree(tree, col, descending):
