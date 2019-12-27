@@ -9,8 +9,11 @@ from pwd import getpwuid
 from tkinter import filedialog
 from os import getcwd, stat
 import stat as stat_u
-from os.path import expanduser, basename, dirname, isdir, join
+from os.path import expanduser, basename, dirname, join
 import queue
+import re
+
+from Found import Found
 from helpers import searchtask, byte_format
 import platform
 
@@ -26,24 +29,30 @@ class Application(tk.Frame):
         super().__init__(master)
         self.master = master
         self.master.grid_columnconfigure(0, weight=1)
-        self.master.grid_rowconfigure(0, weight=1)
+        self.master.grid_rowconfigure(1, weight=1)
 
         self.master.bind("<Return>", self._do_search)
 
-        self.recurse = tk.BooleanVar()
-        self.search_pattern = tk.StringVar(value="*")
-        self.search_folder = tk.StringVar(value=getcwd())
-        self.status_text = tk.StringVar(value=ProgramInfo.copyright)
-        self.count_text = tk.StringVar()
+        self._init_variables()
+        self._create_widgets()
+        self._create_menu()
+        self._set_up_icons()
 
+    def _init_variables(self):
         self.search_stopped = False
         self.search_task = None
         self.results_queue = queue.Queue()
         self.progress_queue = queue.Queue()
 
-        self._create_widgets()
-        self._create_menu()
-        self._set_up_icons()
+        self.recurse = tk.BooleanVar()
+        self.search_pattern = tk.StringVar(value="*")
+        self.grep_pattern = tk.StringVar()
+        self.match_case = tk.BooleanVar()
+        self.search_folder = tk.StringVar(value=getcwd())
+        self.status_text = tk.StringVar(value=ProgramInfo.copyright)
+        self.file_folder_match_count_text = tk.StringVar()
+        self.line_match_count_text = tk.StringVar()
+        self.start_button_text = tk.StringVar()
 
     def _create_menu(self):
         def generate_event(event):
@@ -90,25 +99,58 @@ class Application(tk.Frame):
         self.folder_icon = set_up_icon('./icon/folder.png')
 
     def _create_widgets(self):
-        frame = ttk.Frame(padding="10")
-        frame.grid(sticky=tk.NSEW)
+        self._create_criteria_widgets(0)
+        self._create_results_widgets(1)
+        self._create_status_bar(2)
+
+    def _create_status_bar(self, row):
+        ttk.Separator(orient=tk.HORIZONTAL).grid(row=row, column=0)
+        ttk.Label(textvariable=self.status_text, padding=4,
+                  relief=tk.FLAT).grid(row=row+1, column=0,
+                                       sticky=tk.EW)
+
+    def _create_results_widgets(self, parent_row):
+        results_frame = ttk.Frame(padding=10)
+        results_frame.grid(row=parent_row, column=0, sticky=tk.NSEW)
+        results_frame.grid_columnconfigure(0, weight=1)
+        results_frame.grid_columnconfigure(1, weight=1)
+        results_frame.grid_rowconfigure(0, weight=1)
+
+        self._set_up_tree(results_frame, row=0, column=0)
+        self._set_up_hits_tree(results_frame, row=0, column=1)
+
+    def _create_criteria_widgets(self, parent_row):
+        frame = ttk.Frame(padding=10)
+        frame.grid(row=parent_row, sticky=tk.NSEW)
         frame.grid_columnconfigure(1, weight=1)
 
-        # Search pattern text box
+        # File search pattern text box
         row = 0
-        ttk.Label(frame, text="Look for").grid(row=row, column=0, sticky=tk.E)
+        ttk.Label(frame, text="Match files/folders:").grid(row=row, column=0,
+                                                           sticky=tk.E)
         search_pattern_entry = ttk.Entry(frame,
                                          textvariable=self.search_pattern)
         search_pattern_entry.grid(row=row, column=1, sticky=tk.EW)
 
         # Start button
-        self.start_button = ttk.Button(frame, text="Start",
-                                       command=self._do_search)
-        self.start_button.grid(row=row, column=2, sticky=tk.W)
+        ttk.Button(frame, text="Start", takefocus=0, command=self._do_search) \
+            .grid(row=row, column=2, sticky=tk.W)
 
+        # Grep text box
+        row += 1
+        ttk.Label(frame, text="Look for pattern:").grid(row=row, column=0,
+                                                        sticky=tk.E)
+        ttk.Entry(frame, textvariable=self.grep_pattern).grid(row=row,
+                                                              column=1,
+                                                              sticky=tk.EW)
+        row += 1
+        ttk.Checkbutton(frame, text="Match case?", onvalue=True, offvalue=False,
+                        variable=self.match_case).grid(row=row, column=1,
+                                                       sticky=tk.W)
         # Search folder text box
         row += 1
-        ttk.Label(frame, text="Look in").grid(row=row, column=0, sticky=tk.E)
+        ttk.Label(frame, text="Look in folder:").grid(row=row, column=0,
+                                                      sticky=tk.E)
         ttk.Entry(frame, textvariable=self.search_folder).grid(row=row,
                                                                column=1,
                                                                sticky=tk.EW)
@@ -121,40 +163,24 @@ class Application(tk.Frame):
 
         # Search subdirectories check box
         row += 1
-        ttk.Label(frame, text="Search subdirectories?").grid(row=row,
-                                                             column=0,
-                                                             sticky=tk.E)
-        ttk.Checkbutton(frame, onvalue=True,
-                        offvalue=False,
+        ttk.Checkbutton(frame, text="Search subdirectories?",
+                        onvalue=True, offvalue=False,
                         variable=self.recurse).grid(row=row, column=1,
                                                     sticky=tk.W)
 
-        # Results tree
-        row += 1
-        frame.grid_rowconfigure(row, weight=1)
-        self._set_up_tree(frame, row, 0, 3)
-
-        # Status bar
-        row += 1
-        tk.Label(textvariable=self.status_text).grid(row=row, column=0,
-                                                     columnspan=3, sticky=tk.W)
-
         search_pattern_entry.focus_set()
 
-    def _set_up_tree(self, frame, row, column, column_span):
-        def set_up_context_menu(master):
-            master.context_menu = tk.Menu(master, tearoff=0)
-            master.context_menu.add_command(label="Copy Path",
-                                            command=self._copy_path)
-
+    def _set_up_tree(self, frame, row, column):
         headings = ['Name', 'Location']
 
         container = ttk.Frame(frame)
-        container.grid(row=row, column=column, columnspan=column_span,
-                       sticky=tk.NSEW)
+        container.grid(row=row, column=column, sticky=tk.NSEW)
 
         self.tree = ttk.Treeview(columns=headings, padding=0)
-        set_up_context_menu(self.tree)
+        self.tree.context_menu = tk.Menu(self.tree, tearoff=0)
+        self.tree.context_menu.add_command(label="Copy Path",
+                                           command=self._copy_path)
+        # set_up_context_menu(self.tree)
 
         self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
         if platform.system() == "Darwin":
@@ -173,12 +199,44 @@ class Application(tk.Frame):
         vsb = ttk.Scrollbar(orient="vertical",
                             command=self.tree.yview)
         self.tree.configure(yscrollcommand=vsb.set)
-        self.tree.grid(column=0, row=0, sticky='nsew', in_=container)
+        self.tree.grid(column=0, row=0, sticky=tk.NSEW, in_=container)
 
-        vsb.grid(column=1, row=0, sticky='ns', in_=container)
+        vsb.grid(column=1, row=0, sticky=tk.NS, in_=container)
 
-        label = ttk.Label(textvariable=self.count_text)
-        label.grid(column=0, row=1, sticky='ew', in_=container)
+        ttk.Label(textvariable=self.file_folder_match_count_text) \
+            .grid(column=0, row=1, sticky=tk.EW, in_=container)
+
+        container.grid_columnconfigure(0, weight=1)
+        container.grid_rowconfigure(0, weight=1)
+
+    def _set_up_hits_tree(self, frame, row, column):
+        self.hits_tree_columns = ['line_no', 'line']
+
+        container = ttk.Frame(frame)
+        container.grid(row=row, column=column, sticky=tk.NSEW)
+
+        self.hits_tree = ttk.Treeview(columns=self.hits_tree_columns,
+                                      padding=0)
+        for column in self.hits_tree_columns:
+            self.hits_tree.heading(column)
+
+        self.hits_tree.column(self.hits_tree_columns[0], width=10)
+        self.hits_tree.column(self.hits_tree_columns[1], width=400)
+        self.hits_tree.column("#0", stretch=False, width=0)
+
+        vsb = ttk.Scrollbar(orient="vertical",
+                            command=self.hits_tree.yview)
+        hsb = ttk.Scrollbar(orient="horizontal",
+                            command=self.hits_tree.xview)
+        self.hits_tree.configure(yscrollcommand=vsb.set,
+                                 xscrollcommand=hsb.set)
+        self.hits_tree.grid(column=0, row=0, sticky=tk.NSEW, in_=container)
+
+        vsb.grid(column=1, row=0, sticky=tk.NS, in_=container)
+        hsb.grid(column=0, row=1, sticky=tk.EW, in_=container)
+
+        ttk.Label(textvariable=self.line_match_count_text) \
+            .grid(column=0, row=2, sticky=tk.EW, in_=container)
 
         container.grid_columnconfigure(0, weight=1)
         container.grid_rowconfigure(0, weight=1)
@@ -191,10 +249,15 @@ class Application(tk.Frame):
         if search_folder:
             self.search_folder.set(search_folder)
 
+    def _get_hit_count(self):
+        matches = len(self.hits_tree.get_children())
+        suffix = "" if matches == 1 else "s"
+        return f"{matches:,} line{suffix}"
+
     def _get_match_count(self):
         matches = len(self.tree.get_children())
-        suffix = "" if matches == 1 else "es"
-        return f'{matches:,} match{suffix}'
+        suffix = "" if matches == 1 else "s"
+        return f'{matches:,} file{suffix}/folder{suffix}'
 
     def _process_progress_queue(self):
         if not self.progress_queue.empty():
@@ -205,19 +268,20 @@ class Application(tk.Frame):
 
     def _process_results_queue(self):
         if not self.results_queue.empty():
-            files = self.results_queue.get()
-            # print(f"files: {len(files)}")
-            for file in files:
-                image = self.folder_icon if isdir(file) \
+            results = self.results_queue.get()
+            for found_item in results:
+                image = self.folder_icon if found_item.is_folder \
                     else self.doc_icon
-                values = (basename(file), dirname(file))
+                values = (basename(found_item.path), dirname(found_item.path))
                 self.tree.insert('', 'end', values=values, open=False,
-                                 image=image)
-            self.count_text.set(self._get_match_count())
+                                 image=image,
+                                 tags=found_item.lines)
+            self.file_folder_match_count_text.set(self._get_match_count())
 
             self.master.after(100, self._process_results_queue)
         else:
-            self.start_button.configure(text="Start")
+            # self.start_button.configure(text="Start")
+            self.start_button_text.set("Start")
             self._set_status("Stopped" if self.search_stopped else "Done")
 
     # noinspection PyUnusedLocal
@@ -242,15 +306,30 @@ class Application(tk.Frame):
         with self.progress_queue.mutex:
             self.progress_queue.queue.clear()
 
-    def _start_search(self):
-        self.start_button.configure(text="Stop")
+    def _clear_tree(self):
         self.tree.delete(*self.tree.get_children())
+
+    def _clear_hits(self):
+        self.hits_tree.delete(*self.hits_tree.get_children())
+        self.hits_tree.column(self.hits_tree_columns[0], width=10)
+        self.hits_tree.column(self.hits_tree_columns[1], width=400)
+        self._set_status("")
+        self.line_match_count_text.set("")
+
+    def _start_search(self):
+        self.start_button_text.set("Stop")
+        # self.start_button.configure(text="Stop")
+        self._clear_tree()
+        self._clear_hits()
+
         search_pattern = self.search_pattern.get() or "*"
         search_folder = expanduser(self.search_folder.get()) or getcwd()
         self.search_task = searchtask.SearchTask(self.progress_queue,
                                                  self.results_queue,
                                                  search_pattern,
                                                  search_folder,
+                                                 self.grep_pattern.get(),
+                                                 self.match_case.get(),
                                                  self.recurse.get())
         self.search_task.start()
         self.master.after(100, self._process_progress_queue)
@@ -265,20 +344,43 @@ class Application(tk.Frame):
             status_text = "..." + status_text
         self.status_text.set(status_text)
 
-    def _get_selected_file(self):
+    def _get_selected_item(self):
         sel = self.tree.selection()
         if len(sel) == 1:
-            file_set = self.tree.set(sel)
-            return join(file_set[self.tree.heading(1)["text"]],
-                        file_set[self.tree.heading(0)["text"]])
+            item = self.tree.item(sel)
+            return Found(join(item['values'][1], item['values'][0]),
+                         lines=item['tags'])
 
     # noinspection PyUnusedLocal
     def _on_tree_select(self, event=None):
-        file = self._get_selected_file()
-        if file is None:
-            self._set_status("")
+        self._clear_hits()
+
+        item = self._get_selected_item()
+        if item is None:
             return
-        s = stat(file)
+        regex = re.compile(r"^(\d*) {(.*)\n}")
+        for line in item.lines:
+            self.hits_tree.insert('', 'end', values=line, open=False)
+
+            # adjust column width if necessary to fit each value
+            match = regex.match(line)
+            if match:
+                match_count = len(match.groups())
+                if match_count > 0:
+                    width = tkfont.Font().measure(f"{match[1]}X")
+                    col = self.hits_tree_columns[0]
+                    if self.hits_tree.column(col, width=None) < width:
+                        self.hits_tree.column(col, width=width)
+
+                if match_count > 1:
+                    width = tkfont.Font().measure(f"{match[2]}X")
+                    col = self.hits_tree_columns[1]
+                    if self.hits_tree.column(col, width=None) < width:
+                        self.hits_tree.column(col, width=width)
+        self.line_match_count_text.set(self._get_hit_count())
+
+        s = stat(item.path)
+        name = basename(item.path) + ('/' if stat_u.S_ISDIR(s.st_mode) else '')
         status = (
             f"{stat_u.filemode(s.st_mode)} "
             f"{s.st_nlink:>4} "
@@ -286,7 +388,7 @@ class Application(tk.Frame):
             f"{grp.getgrgid(s.st_gid).gr_name:>9} "
             f"{byte_format.format_bytes(s.st_size, binary=True)} "
             f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(s.st_mtime))} "
-            f"{basename(file) + ('/' if stat_u.S_ISDIR(s.st_mode) else '')}"
+            f"{name}"
         )
         self._set_status(status)
 
@@ -299,10 +401,10 @@ class Application(tk.Frame):
                 self.tree.context_menu.grab_release()
 
     def _copy_path(self):
-        file = self._get_selected_file()
-        if file is not None:
+        item = self._get_selected_item()
+        if item is not None:
             self.master.clipboard_clear()
-            self.master.clipboard_append(file)
+            self.master.clipboard_append(item.path)
 
 
 def sort_tree(tree, col, descending):
