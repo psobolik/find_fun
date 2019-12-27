@@ -9,23 +9,27 @@ from Found import Found
 
 class SearchTask(threading.Thread):
     def __init__(self,
-                 _progress_queue,
-                 _results_queue,
-                 _search_pattern,
-                 _search_folder,
-                 _grep_pattern,
-                 _match_case,
-                 _recurse):
+                 progress_queue,
+                 results_queue,
+                 search_pattern,
+                 search_folder,
+                 grep_pattern,
+                 match_case,
+                 match_word,
+                 recurse):
         threading.Thread.__init__(self)
-        self.progress_queue = _progress_queue
-        self.results_queue = _results_queue
-        self.search_pattern = _search_pattern
-        self.search_folder = _search_folder
-        self.recurse = _recurse
+        self.progress_queue = progress_queue
+        self.results_queue = results_queue
+        self.search_pattern = search_pattern
+        self.search_folder = search_folder
+        self.recurse = recurse
         self.stop_event = threading.Event()
 
-        self.regex = re.compile(_grep_pattern, 0 if _match_case else re.I) \
-            if _grep_pattern else None
+        self.regex = None
+        if grep_pattern:
+            if match_word:
+                grep_pattern = f"\\W{grep_pattern}\\W"
+            self.regex = re.compile(grep_pattern, 0 if match_case else re.I)
 
         self.was_stopped = False
 

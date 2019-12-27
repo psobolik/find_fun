@@ -48,11 +48,12 @@ class Application(tk.Frame):
         self.search_pattern = tk.StringVar(value="*")
         self.grep_pattern = tk.StringVar()
         self.match_case = tk.BooleanVar()
+        self.match_word = tk.BooleanVar()
         self.search_folder = tk.StringVar(value=getcwd())
         self.status_text = tk.StringVar(value=ProgramInfo.copyright)
         self.file_folder_match_count_text = tk.StringVar()
         self.line_match_count_text = tk.StringVar()
-        self.start_button_text = tk.StringVar()
+        self.start_button_text = tk.StringVar(value="Start")
 
     def _create_menu(self):
         def generate_event(event):
@@ -133,10 +134,12 @@ class Application(tk.Frame):
         search_pattern_entry.grid(row=row, column=1, sticky=tk.EW)
 
         # Start button
-        ttk.Button(frame, text="Start", takefocus=0, command=self._do_search) \
-            .grid(row=row, column=2, sticky=tk.W)
+        ttk.Button(frame, textvariable=self.start_button_text, takefocus=0,
+                   command=self._do_search).grid(row=row,
+                                                 column=2,
+                                                 sticky=tk.W)
 
-        # Grep text box
+        # Grep pattern text box
         row += 1
         ttk.Label(frame, text="Look for pattern:").grid(row=row, column=0,
                                                         sticky=tk.E)
@@ -144,9 +147,13 @@ class Application(tk.Frame):
                                                               column=1,
                                                               sticky=tk.EW)
         row += 1
-        ttk.Checkbutton(frame, text="Match case?", onvalue=True, offvalue=False,
-                        variable=self.match_case).grid(row=row, column=1,
-                                                       sticky=tk.W)
+        ck_frame = ttk.Frame(frame)
+        ck_frame.grid(row=row, column=1, sticky=tk.W)
+        ttk.Checkbutton(ck_frame, text="Match case?",
+                        variable=self.match_case).grid(row=0, column=0)
+        ttk.Checkbutton(ck_frame, text="Match whole words?",
+                        variable=self.match_word).grid(row=0, column=1)
+
         # Search folder text box
         row += 1
         ttk.Label(frame, text="Look in folder:").grid(row=row, column=0,
@@ -330,6 +337,7 @@ class Application(tk.Frame):
                                                  search_folder,
                                                  self.grep_pattern.get(),
                                                  self.match_case.get(),
+                                                 self.match_word.get(),
                                                  self.recurse.get())
         self.search_task.start()
         self.master.after(100, self._process_progress_queue)
