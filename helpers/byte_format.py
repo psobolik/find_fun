@@ -1,4 +1,5 @@
-# adapted from https://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size#1094933
+# adapted from https://stackoverflow.com/questions/1094841/
+# reusable-library-to-get-human-readable-version-of-file-size#1094933
 
 
 # def sizeof_fmt(num, suffix='B'):
@@ -29,6 +30,9 @@ def format_bytes(num, binary=False):
 
 
 if __name__ == '__main__':
-    for (i, num1, numb) in [(i, i * 1000, i * 1024) for i in range(0, 1000000, 1000)]:
-        print(f'({i} * 1000) {num1}: {format_bytes(num1)}, {format_bytes(num1, True)}')
-        print(f'({i} * 1024) {numb}: {format_bytes(numb)}, {format_bytes(numb, True)}')
+    for (i, num1, numb) in [(i, i * 1000, i * 1024) for i in range(0, 1000000,
+                                                                   1000)]:
+        print(f'({i} * 1000) {num1}: {format_bytes(num1)}, '
+              f'{format_bytes(num1, True)}')
+        print(f'({i} * 1024) {numb}: {format_bytes(numb)}, '
+              f'{format_bytes(numb, True)}')
